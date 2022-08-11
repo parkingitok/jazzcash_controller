@@ -1,0 +1,130 @@
+<?php 
+defined('BASEPATH') OR exit('No direct script access allowed');
+ class Payment_controller extends CI_Controller {
+
+    public function __construct()
+    {
+        parent::__construct();
+    }
+    public function index()
+    {
+        $id = $this->uri->segment(2);
+        if(!$this->session->userdata('user')){
+            $this->session->set_userdata('error', 'Please Login First');
+            $this->session->set_userdata('redirectcheckout',$id);
+            redirect(base_url().'login');
+        }
+
+        $this->db->where('id=', $id);
+        $data['data'] = $this->db->get('reservation')->row();  
+
+        $data['view_content'] = 'include/checkout.php';
+        $this->load->view('common/content', $data);    
+    }
+    public function do_transaction()
+    {               
+        //to get amount         
+        $this->db->where('id',$_POST['reservation_id']);
+        $reservation_row=$this->db->get('reservation')->row();
+        $pp_amount= $reservation_row->total_cost;
+ 
+      
+ 
+        //to get local time
+        date_default_timezone_set("Asia/Karachi");
+        $DateTime =  new \DateTime();
+        $pp_TxnDateTime=$DateTime->format('YmdHis');
+
+        //expiry time
+        $expiryDateTime=$DateTime;
+        $expiryDateTime->modify('+' . 1 . 'hours');
+        $pp_TxnExpiryDateTime=$expiryDateTime->format('YmdHis');
+ 
+        //make unique transactionID using current date
+        $pp_TxnRefNo='T'.$pp_TxnDateTime;
+        $jazzcashdata=$this->config->item("jazzcash");
+     
+       $post_data=array(
+      
+    "pp_Version" 			=> "1.1",
+	"pp_TxnType" 			=> "",
+	"pp_Language" 			=>  'EN',
+	"pp_MerchantID" 		=>$jazzcashdata['jazzcash']['MERCHANT_ID'],
+	"pp_SubMerchantID" 		=> "",
+	"pp_Password" 			=> $jazzcashdata['jazzcash']['PASSWORD'],
+	"pp_BankID" 			=> "TBANK",
+	"pp_ProductID" 			=> "RETL",
+	"pp_TxnRefNo" 			=>  "T" . date('YmdHis'),
+	"pp_Amount" 			=> "100",
+	"pp_TxnCurrency" 		=> "PKR",
+	"pp_TxnDateTime" 		=>  date('YmdHis'),
+	"pp_BillReference" 		=> "billRef",
+	"pp_Description" 		=> "Description of transaction",
+	"pp_TxnExpiryDateTime" 	=> date('YmdHis', strtotime('+8 Days')),
+	"pp_ReturnURL" 			=> $jazzcashdata['jazzcash']['RETURN_URL'],
+	"pp_SecureHash" 		=> "",
+	"ppmpf_1" 				=> "1",
+	"ppmpf_2" 				=> "2",
+	"ppmpf_3" 				=> "3",
+	"ppmpf_4" 				=> "4",
+	"ppmpf_5" 				=> "5",
+
+       );
+       $pp_SecuredHash=$this->get_SecureHash($post_data,$jazzcashdata['jazzcash']['INTEGRITY_SALT']);
+
+       $post_data['pp_SecureHash']=  $pp_SecuredHash;    
+
+       
+
+       $data=array(
+        "name"=>$_POST['name'],
+        "email"=>$_POST['email'],
+        "phone"=>$_POST['phone'],
+        "description"=>$_POST['description'],
+        "reservation_id"=>$_POST['reservation_id'],
+        "amount"=> $pp_amount,
+        "TxnRefNo"=>$pp_TxnRefNo,
+        
+       );
+       $this->db->insert('transaction',$data);
+
+       $data['post_data'] = $post_data;  
+       $data['data'] = $data;  
+        
+       $data['view_content'] = 'include/waitfortransaction.php';
+       $this->load->view('common/content', $data);    
+       
+    }
+    
+    public function get_SecureHash($data_array,$jazzhash)
+    {
+        
+       
+        ksort($data_array);
+        
+        $str = '';
+        foreach($data_array as $key => $value){
+            if(!empty($value)){
+                $str = $str . '&' . $value;
+            }
+        }
+ 
+        $str =$jazzhash.$str;
+    
+        $pp_SecureHash = hash_hmac('sha256', $str, $jazzhash);
+        
+        // echo '<pre>';
+        // print_r($pp_SecureHash);
+        // echo '</pre>'; exit;
+        return $pp_SecureHash;
+    }
+
+    public function transaction_status()
+    {
+echo '<pre>';
+print_r($_POST);
+echo '</pre>'; 
+    }
+}
+
+/* End of file Payment_controller.php and path \application\controllers\Payment_controller.php */
